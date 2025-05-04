@@ -7,6 +7,8 @@ import folium
 from folium.plugins import AntPath
 import telebot
 
+import mysql.connector
+
 load_dotenv()
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN')
@@ -18,33 +20,62 @@ user_data = {}
 def get_categories():
     return ["Здания", "Памятники", "Личности", "Традиции"]
 
+def get_db_connection():
+    return mysql.connector.connect(
+        host=os.getenv('DB_HOST'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD'),
+        database=os.getenv('DB_NAME')
+    )
+
 def get_objects_by_category(category):
-    objects = {
-        "Здания": [
-            {"name": "Кремль", "lat": 55.7517, "lon": 37.6178},
-            {"name": "Храм Василия Блаженного", "lat": 55.7525, "lon": 37.6231},
-            {"name": "Большой театр", "lat": 55.7601, "lon": 37.6186},
-            {"name": "ГУМ", "lat": 55.7547, "lon": 37.6217},
-            {"name": "МГУ", "lat": 55.7039, "lon": 37.5287}
-        ],
-        "Памятники": [
-            {"name": "Царь-пушка", "lat": 55.7507, "lon": 37.6179},
-            {"name": "Памятник Пушкину", "lat": 55.7646, "lon": 37.6066},
-            {"name": "Монумент Победы", "lat": 55.7303, "lon": 37.5048},
-            {"name": "Памятник Минину и Пожарскому", "lat": 55.7525, "lon": 37.6231},
-            {"name": "Памятник Гагарину", "lat": 55.7103, "lon": 37.5857}
-        ],
-        "Личности": {
-            "Ректоры и профессора": ["Петр I", "Лев Толстой", "Александр Пушкин", "Анна Ахматова", "Максим Горький"],
-            "Выпускники": ["Иван Иванов", "Дмитрий Дмитриев", "Анна Васильева", "Петр Петров", "Сергей Сергеев"],
-            "Учёные": ["Эйнштейн", "Ньютон", "Пуанкаре", "Коперник", "Гагарин"],
-            "Конструкторы": ["Королев", "Циолковский", "Туполев", "Микоян", "Яковлев"],
-            "Общественные деятели": ["Ленин", "Троцкий", "Мартин Лютер Кинг", "Ганди", "Нельсон Мандела"],
-            "Нобелевские лауреаты": ["Пастер", "Менделеев", "Флеминг", "Шульц", "Тимоти Хант"]
-        },
-        "Традиции": ["Масленица", "Пасха", "Новый год", "День Победы", "Рождество"]
-    }
-    return objects.get(category, {})
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+    
+    objects = {}
+    
+    try:
+        if category == "Здания":
+            cursor.execute("SELECT title as name, latitude as lat, longitude as lon FROM Building")
+            buildings = cursor.fetchall()
+            objects = [{"name": b['name'], "lat": float(b['lat']), "lon": float(b['lon'])} for b in buildings]
+        
+        elif category == "Памятники":
+            cursor.execute("SELECT title as name, latitude as lat, longitude as lon FROM sight")
+            sights = cursor.fetchall()
+            objects = [{"name": s['name'], "lat": float(s['lat']), "lon": float(s['lon'])} for s in sights]
+        
+        elif category == "Личности":
+            cursor.execute("SELECT id, title FROM category")
+            categories = cursor.fetchall()
+            personalities = {}
+            
+            for cat in categories:
+                cursor.execute("""
+                    SELECT p.name 
+                    FROM person p
+                    JOIN person_category pc ON p.id = pc.person_id
+                    WHERE pc.category_id = %s
+                """, (cat['id'],))
+                persons = cursor.fetchall()
+                personalities[cat['title']] = [p['name'] for p in persons]
+            
+            objects = personalities
+        
+        elif category == "Традиции":
+            cursor.execute("SELECT title FROM tradition")
+            traditions = cursor.fetchall()
+            objects = [t['title'] for t in traditions]
+        
+        return objects
+    
+    except Exception as e:
+        print(f"Ошибка при получении данных: {e}")
+        return {}
+    
+    finally:
+        cursor.close()
+        conn.close()
 
 def generate_markup(page=0, category=None, subcategory=None):
     markup = types.InlineKeyboardMarkup()
@@ -79,7 +110,15 @@ def generate_markup(page=0, category=None, subcategory=None):
     if control_buttons:
         markup.row(*control_buttons)
     
-    markup.row(types.InlineKeyboardButton("В главное меню", callback_data="main_menu"))
+    # Добавляем навигационные кнопки только для категории "Личности"
+    if category == "Личности" and subcategory:
+        markup.row(
+            types.InlineKeyboardButton("← Назад к подкатегориям", callback_data="back_to_subcategories"),
+            types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+        )
+    elif category and category != "Личности":
+        markup.row(types.InlineKeyboardButton("В главное меню", callback_data="main_menu"))
+    
     return markup, total_pages
 
 @bot.message_handler(commands=['start'])
@@ -129,6 +168,7 @@ def handle_subcategory_selection(call):
     user_data[chat_id]['subcategory'] = subcategory
     
     markup, total_pages = generate_markup(0, category, subcategory)
+    
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
@@ -137,6 +177,15 @@ def handle_subcategory_selection(call):
     )
     user_data[chat_id]['page'] = 0
     user_data[chat_id]['message_id'] = call.message.message_id
+    bot.answer_callback_query(call.id)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'back_to_subcategories')
+def handle_back_to_subcategories(call):
+    chat_id = call.message.chat.id
+    # Удаляем текущее сообщение со списком личностей
+    bot.delete_message(chat_id, call.message.message_id)
+    # Показываем меню подкатегорий
+    show_subcategory_menu(chat_id)
     bot.answer_callback_query(call.id)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('page|'))
@@ -162,7 +211,7 @@ def handle_main_menu(call):
     bot.delete_message(chat_id, call.message.message_id)
     show_category_menu(chat_id)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith('item_'))
+
 @bot.callback_query_handler(func=lambda call: call.data.startswith('item_'))
 def handle_item_selection(call):
     chat_id = call.message.chat.id
@@ -188,13 +237,37 @@ def handle_item_selection(call):
     if selected_obj:
         user_data[chat_id]['selected_object'] = selected_obj
     
-    response = f"Информация о {item_name}."
+    response = f"Информация о {item_name}.\n\nЗдесь будет подробное описание выбранного объекта."
     markup = types.InlineKeyboardMarkup()
     
     if category in ["Здания", "Памятники"] and isinstance(selected_obj, dict) and 'lat' in selected_obj and 'lon' in selected_obj:
         markup.add(types.InlineKeyboardButton("Построить маршрут", callback_data="request_route"))
     
+    markup.row(
+        types.InlineKeyboardButton("← Назад к выбору объекта", callback_data="back_to_objects"),
+        types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+    )
+    
     bot.send_message(chat_id, response, reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == 'back_to_objects')
+def handle_back_to_objects(call):
+    chat_id = call.message.chat.id
+    user_info = user_data.get(chat_id, {})
+    
+    category = user_info.get('category')
+    subcategory = user_info.get('subcategory')
+    page = user_info.get('page', 0)
+    
+    markup, total_pages = generate_markup(page, category, subcategory)
+    
+    bot.send_message(
+        chat_id,
+        f"Страница {page+1} из {total_pages}",
+        reply_markup=markup
+    )
+    
+    bot.answer_callback_query(call.id, "Возвращаемся к списку объектов")
 
 @bot.callback_query_handler(func=lambda call: call.data == 'request_route')
 def handle_route_request(call):
@@ -218,7 +291,8 @@ def handle_location(message):
             bot.send_message(chat_id, "❌ У объекта нет координат!")
             return
 
-        url = f"http://router.project-osrm.org/route/v1/driving/{user_lon},{user_lat};{obj['lon']},{obj['lat']}?overview=full&geometries=geojson"
+        # Построение маршрута (без изменений)
+        url = f"http://router.project-osrm.org/route/v1/walking/{user_lon},{user_lat};{obj['lon']},{obj['lat']}?overview=full&geometries=geojson"
         response = requests.get(url)
         data = response.json()
 
@@ -226,8 +300,8 @@ def handle_location(message):
             raise Exception("OSRM routing error")
 
         route = data['routes'][0]
-        distance = route['distance']/1000  # в километрах
-        duration = route['duration']/60    # в минутах
+        distance = route['distance']/1000
+        duration = route['duration']/60 * 3
         coordinates = [(lat, lon) for lon, lat in route['geometry']['coordinates']]
 
         m = folium.Map(
@@ -236,24 +310,9 @@ def handle_location(message):
             tiles="CartoDB positron"
         )
 
-        folium.Marker(
-            [user_lat, user_lon],
-            popup="Ваше местоположение",
-            icon=folium.Icon(color="green", icon="user")
-        ).add_to(m)
-
-        folium.Marker(
-            [obj['lat'], obj['lon']],
-            popup=obj['name'],
-            icon=folium.Icon(color="red", icon="flag")
-        ).add_to(m)
-
-        AntPath(
-            locations=coordinates,
-            color='#1E90FF',
-            weight=6,
-            dash_array=[10, 20]
-        ).add_to(m)
+        folium.Marker([user_lat, user_lon], popup="Ваше местоположение", icon=folium.Icon(color="green", icon="user")).add_to(m)
+        folium.Marker([obj['lat'], obj['lon']], popup=obj['name'], icon=folium.Icon(color="red", icon="flag")).add_to(m)
+        AntPath(locations=coordinates, color='#1E90FF', weight=6, dash_array=[10, 20]).add_to(m)
 
         folium.map.Marker(
             [user_lat, user_lon],
@@ -269,19 +328,30 @@ def handle_location(message):
         filename = f"route_{chat_id}.html"
         m.save(filename)
         
+        # Создаем клавиатуру с правильными кнопками навигации
+        markup = types.InlineKeyboardMarkup()
+        markup.row(
+            types.InlineKeyboardButton("← Назад к выбору объекта", callback_data="back_to_objects"),
+            types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+        )
+        
         with open(filename, 'rb') as f:
             bot.send_document(
                 chat_id,
                 f,
-                caption=f"Маршрут к {obj['name']}",
-                parse_mode="HTML"
+                caption=f"Маршрут к {obj['name']}\n\n"
+                        f"📍 Дистанция: {distance:.1f} км\n"
+                        f"⏱ Время в пути: ~{duration:.1f} мин",
+                parse_mode="HTML",
+                reply_markup=markup
             )
         
         os.remove(filename)
 
+    except requests.exceptions.RequestException:
+        bot.send_message(chat_id, "⚠️ Сервис построения маршрутов временно недоступен")
     except Exception as e:
-        bot.send_message(chat_id, f"⚠️ Ошибка построения маршрута: {str(e)}")
-        print(f"Error: {str(e)}")
+        bot.send_message(chat_id, f"⚠️ Ошибка при построении маршрута: {str(e)}")
 
 if __name__ == "__main__":
     bot.infinity_polling()
