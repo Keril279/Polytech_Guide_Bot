@@ -114,10 +114,10 @@ def generate_markup(page=0, category=None, subcategory=None):
     if category == "Личности" and subcategory:
         markup.row(
             types.InlineKeyboardButton("← Назад к подкатегориям", callback_data="back_to_subcategories"),
-            types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+            types.InlineKeyboardButton("Главное меню →", callback_data="main_menu")
         )
     elif category and category != "Личности":
-        markup.row(types.InlineKeyboardButton("В главное меню", callback_data="main_menu"))
+        markup.row(types.InlineKeyboardButton("Главное меню", callback_data="main_menu"))
     
     return markup, total_pages
 
@@ -126,14 +126,14 @@ def send_welcome(message):
     show_category_menu(message.chat.id)
 
 def show_category_menu(chat_id):
-    text = "Привет! Я бот-гид. Выберите категорию:"
+    text = "🌟Привет, политехник! \n\n Перед тобой живая история нашего университета: старинные стены, которые помнят гениальные открытия, легендарные личности, чьи имена вписаны в науку, и традиции, которые объединяют поколения студентов. \n\n 📜 Выбирай категорию в меню ниже и погружайся в мир, где история оживает. \n\n👉Куда отправимся в первую очередь? Выбери о чем хочешь узнать:"
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add(*[types.KeyboardButton(category) for category in get_categories()])
     bot.send_message(chat_id, text, reply_markup=markup)
 
 @bot.message_handler(func=lambda m: m.text not in get_categories() and m.text != '/start')
 def handle_unknown(message):
-    bot.send_message(message.chat.id, "Пожалуйста, выберите категорию из меню ниже или напишите /start.")
+    bot.send_message(message.chat.id, "К сожалению, бот не смог разобрать твоё сообщение, выбери категорию из меню ниже или напиши /start, чтобы начать работу")
 
 @bot.message_handler(func=lambda m: m.text in get_categories())
 def handle_category_selection(message):
@@ -141,23 +141,29 @@ def handle_category_selection(message):
     category = message.text
     user_data[chat_id] = {'category': category}
     
-    bot.send_message(chat_id, "Используйте кнопки ниже для навигации:", reply_markup=types.ReplyKeyboardRemove())
+    bot.send_message(chat_id, "🌟Используй кнопки ниже для навигации:", reply_markup=types.ReplyKeyboardRemove())
     
     if category == "Личности":
         show_subcategory_menu(chat_id)
     else:
+        if category == "Здания":
+            intro_text = "🏛️  От легендарного Главного здания до скрытых от глаз корпусов — здесь оживают страницы истории Политеха.\n\n 👉Выбери здание, чтобы узнать его историю:"
+        elif category == "Памятники":
+            intro_text = "🗿  Бронзовые и каменные свидетели эпох — узнай, какие истории хранят монументы Политеха. \n\n 👉Выбери памятник для изучения:"
+        elif category == "Традиции":
+            intro_text = "🎓 Выбери традицию, чтобы узнать о ней больше:"
         markup, total_pages = generate_markup(0, category)
-        msg = bot.send_message(chat_id, f"Страница 1 из {total_pages}", reply_markup=markup)
+        msg = bot.send_message(chat_id, f"{intro_text}\n\n Страница 1 из {total_pages}", reply_markup=markup)
         user_data[chat_id]['page'] = 0
         user_data[chat_id]['message_id'] = msg.message_id
 
 def show_subcategory_menu(chat_id):
-    text = "Выберите подкатегорию:"
+    text = "🌟За каждой великой эпохой Политеха стоят яркие умы и сильные характеры — познакомься с теми, кто превращал науку в легенду. \n\n 👉Выбери интересующую категорию личности:"
     subcategories = list(get_objects_by_category("Личности").keys())
     markup = types.InlineKeyboardMarkup()
     for subcat in subcategories:
         markup.add(types.InlineKeyboardButton(subcat, callback_data=f"subcat_{subcat}"))
-    markup.add(types.InlineKeyboardButton("В главное меню", callback_data="main_menu"))
+    markup.add(types.InlineKeyboardButton("Главное меню", callback_data="main_menu"))
     bot.send_message(chat_id, text, reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('subcat_'))
@@ -168,11 +174,12 @@ def handle_subcategory_selection(call):
     user_data[chat_id]['subcategory'] = subcategory
     
     markup, total_pages = generate_markup(0, category, subcategory)
-    
+    intro_text = f"🔍 В категории '{subcategory}' ты найдешь выдающихся людей, чьи идеи изменили мир. \n\n 👉 Выбери о ком ты хочешь узнать подробнее:"
+
     bot.edit_message_text(
         chat_id=chat_id,
         message_id=call.message.message_id,
-        text=f"Страница 1 из {total_pages}",
+        text=f"{intro_text}\n\n Страница 1 из {total_pages}",
         reply_markup=markup
     )
     user_data[chat_id]['page'] = 0
@@ -244,8 +251,8 @@ def handle_item_selection(call):
         markup.add(types.InlineKeyboardButton("Построить маршрут", callback_data="request_route"))
     
     markup.row(
-        types.InlineKeyboardButton("← Назад к выбору объекта", callback_data="back_to_objects"),
-        types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+        types.InlineKeyboardButton("←Назад к выбору", callback_data="back_to_objects"),
+        types.InlineKeyboardButton("Главное меню →", callback_data="main_menu")
     )
     
     bot.send_message(chat_id, response, reply_markup=markup)
@@ -272,7 +279,7 @@ def handle_back_to_objects(call):
 @bot.callback_query_handler(func=lambda call: call.data == 'request_route')
 def handle_route_request(call):
     chat_id = call.message.chat.id
-    bot.send_message(chat_id, "Пожалуйста, отправьте вашу геолокацию для построения маршрута.")
+    bot.send_message(chat_id, "Пожалуйста, отправь геолокацию для построения маршрута.")
     bot.answer_callback_query(call.id)
 
 @bot.message_handler(content_types=['location'])
@@ -283,7 +290,7 @@ def handle_location(message):
         user_lon = message.location.longitude
         
         if 'selected_object' not in user_data.get(chat_id, {}):
-            bot.send_message(chat_id, "❌ Сначала выберите объект из меню!")
+            bot.send_message(chat_id, "❌ Сначала выбери объект из меню!")
             return
             
         obj = user_data[chat_id]['selected_object']
@@ -331,8 +338,8 @@ def handle_location(message):
         # Создаем клавиатуру с правильными кнопками навигации
         markup = types.InlineKeyboardMarkup()
         markup.row(
-            types.InlineKeyboardButton("← Назад к выбору объекта", callback_data="back_to_objects"),
-            types.InlineKeyboardButton("В главное меню →", callback_data="main_menu")
+            types.InlineKeyboardButton("← Назад к выбору", callback_data="back_to_objects"),
+            types.InlineKeyboardButton("Главное меню →", callback_data="main_menu")
         )
         
         with open(filename, 'rb') as f:
