@@ -109,8 +109,7 @@ def generate_markup(page=0, category=None, subcategory=None):
     
     if control_buttons:
         markup.row(*control_buttons)
-    
-    # Добавляем навигационные кнопки только для категории "Личности"
+
     if category == "Личности" and subcategory:
         markup.row(
             types.InlineKeyboardButton("← Назад к подкатегориям", callback_data="back_to_subcategories"),
@@ -189,9 +188,7 @@ def handle_subcategory_selection(call):
 @bot.callback_query_handler(func=lambda call: call.data == 'back_to_subcategories')
 def handle_back_to_subcategories(call):
     chat_id = call.message.chat.id
-    # Удаляем текущее сообщение со списком личностей
     bot.delete_message(chat_id, call.message.message_id)
-    # Показываем меню подкатегорий
     show_subcategory_menu(chat_id)
     bot.answer_callback_query(call.id)
 
@@ -297,8 +294,6 @@ def handle_location(message):
         if 'lat' not in obj or 'lon' not in obj:
             bot.send_message(chat_id, "❌ У объекта нет координат!")
             return
-
-        # Построение маршрута (без изменений)
         url = f"http://router.project-osrm.org/route/v1/walking/{user_lon},{user_lat};{obj['lon']},{obj['lat']}?overview=full&geometries=geojson"
         response = requests.get(url)
         data = response.json()
@@ -334,8 +329,7 @@ def handle_location(message):
 
         filename = f"route_{chat_id}.html"
         m.save(filename)
-        
-        # Создаем клавиатуру с правильными кнопками навигации
+    
         markup = types.InlineKeyboardMarkup()
         markup.row(
             types.InlineKeyboardButton("← Назад к выбору", callback_data="back_to_objects"),
