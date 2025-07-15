@@ -3,7 +3,7 @@
 ## Описание / Description 
 **Polytech Guide Bot** - это интерактивный телеграм-бот, который помогает пользователям изучать исторические объекты, личности и традиции университета. Бот предоставляет информацию о зданиях, памятниках, выдающихся личностях и традициях, а также может построить маршрут к выбранному объекту. 
 
-**HistoryGuideBot** is an interactive Telegram bot that helps users explore historical objects, personalities and traditions of the university. The bot provides information about buildings, monuments, notable figures and traditions, and can also build a route to the selected object.
+**Polytech Guide Bot** is an interactive Telegram bot that helps users explore historical objects, personalities and traditions of the university. The bot provides information about buildings, monuments, notable figures and traditions, and can also build a route to the selected object.
 
 ## Особенности / Features
 - Интерактивное меню с категориями / Interactive menu with categories  
