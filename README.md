@@ -23,9 +23,7 @@
 - dotenv (для конфигурации / for configuration)  
 
 ## Установка / Installation  
-1. Клонировать репозиторий / Clone repository:  
-  `git clone https://github.com/yourusername/HistoryGuideBot.git`  
-  `cd HistoryGuideBot`  
+1. Клонировать репозиторий / Clone repository
 2. Создать .env файл / Create .env file:  
   ```
   BOT_TOKEN=your_telegram_bot_token
@@ -34,8 +32,7 @@
   DB_PASSWORD=your_database_password
   DB_NAME=your_database_name
   ```
-3. Запустить бота / Run the bot:  
-  `python main.py`  
+3. Запустить бота / Run the bot
 
 ## База данных / Database  
 Таблицы / Tables:  
